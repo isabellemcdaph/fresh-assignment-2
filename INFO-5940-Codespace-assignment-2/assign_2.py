@@ -28,6 +28,12 @@ load_dotenv()  # Loads variables from a local .env if present
 os.environ.setdefault("OPENAI_LOG", "error")
 os.environ.setdefault("OPENAI_TRACING", "false")
 
+# Allow override of OpenAI API base (useful for enterprise/Azure setups)
+openai_api_base = os.getenv("OPENAI_API_BASE")
+if openai_api_base:
+    # Ensure the OpenAI SDK picks up a custom base if provided
+    os.environ["OPENAI_API_BASE"] = openai_api_base
+
 # Tool call logger: the UI sets this per request. The tool checks it and logs.
 # Using a simple global makes this easy to teach and reason about.
 TOOL_LOGGER: Optional[Callable[[Dict[str, Any]], None]] = None
@@ -98,6 +104,18 @@ def internet_search(query: str) -> str:
             return f"Search error: {msg}"
 
         client = TavilyClient(api_key=api_key)
+        # If the user provided a TAVILY_API_BASE, attempt to pass it to the client.
+        client_args = {"api_key": api_key}
+        tavily_base = os.getenv("TAVILY_API_BASE")
+        if tavily_base:
+            client_args["base_url"] = tavily_base
+        try:
+            client = TavilyClient(**client_args)
+        except TypeError:
+            # Older versions of TavilyClient may not accept base_url; fall back.
+            client_args.pop("base_url", None)
+            client = TavilyClient(**client_args)
+
         response = client.search(query, max_results=3)
 
         items = response.get("results", [])
